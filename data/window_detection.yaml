@@ -1,0 +1,21 @@
+# Dataset YAML per YOLOv8 — Window Detection
+# Usato da: src/training/train_yolo.py
+# Formato: COCO → convertito automaticamente da ultralytics se le annotazioni
+#          sono in formato YOLO txt. Se il dataset è in formato COCO JSON,
+#          usare il campo 'path' con la struttura train/valid/test.
+#
+# NOTA: il dataset Roboflow è già in formato COCO con split train/valid/test.
+#       ultralytics supporta sia YOLO txt che COCO JSON nativamente.
+
+# Percorso root — sulla VM sarà /mnt/project/data/raw/roboflow/window-detection-vnpow-v1
+# In locale (Windows) è relativo alla directory di lavoro del training script
+path: data/raw/roboflow/window-detection-vnpow/window-detection-vnpow-v1
+
+train: train
+val: valid
+test: test
+
+# Numero di classi e nomi
+nc: 1
+names:
+  0: window

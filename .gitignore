@@ -1,0 +1,26 @@
+.env
+
+# Dati locali (non versionare immagini e pesi)
+data/raw/
+data/patches/
+data/facades/
+data/windows/
+models/weights/
+runs/
+
+# Prevenzione data/ accidentali in sottocartelle src/
+src/**/data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Artefatti modelli
+*.pt
+*.pth
+*.onnx
+
+# OS
+.DS_Store
+Thumbs.db

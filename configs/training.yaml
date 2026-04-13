@@ -1,0 +1,62 @@
+# =============================================================================
+# Fase 1 — Training YOLOv8 (Window Detector)
+# =============================================================================
+yolo:
+  epochs: 100
+  batch_size: 16               # A10-8Q (8GB VRAM): 16 è sicuro per yolov8n a 640px
+  img_size: 640
+  device: 0                    # GPU index
+  workers: 4
+  random_seed: 42
+  patience: 20                 # early stopping: stop se mAP non migliora per 20 epoche
+  optimizer: SGD               # SGD con momentum è default ultralytics (funziona bene)
+  lr0: 0.01                    # learning rate iniziale
+  lrf: 0.01                    # lr finale = lr0 * lrf (cosine decay)
+  momentum: 0.937
+  weight_decay: 0.0005
+  warmup_epochs: 3
+  cos_lr: true                 # cosine LR scheduler
+  amp: true                    # automatic mixed precision (AMP) — dimezza VRAM
+  cache: false                 # non fare caching immagini in RAM (non necessario)
+  project: runs/window_detection
+  name: yolov8n_windows
+  exist_ok: true               # sovrascrive run precedente con stesso nome
+
+  # Augmentation — applicate automaticamente da ultralytics
+  augmentation:
+    hsv_h: 0.015               # variazione hue
+    hsv_s: 0.7                 # variazione saturation
+    hsv_v: 0.4                 # variazione value/brightness
+    degrees: 5.0               # rotazione leggera (facciate solitamente dritte)
+    translate: 0.1
+    scale: 0.5
+    flipud: 0.0                # no flip verticale (le finestre hanno orientamento fisso)
+    fliplr: 0.5                # flip orizzontale ok
+    mosaic: 1.0                # mosaic augmentation (combina 4 immagini)
+    mixup: 0.0                 # disabilitato per object detection su architettura
+
+
+# =============================================================================
+# Fase 3 — Training EfficientNet (Cleanliness Classifier)
+# =============================================================================
+efficientnet:
+  epochs: 50
+  batch_size: 32
+  img_size: 224
+  random_seed: 42
+  optimizer: adamw
+  lr: 0.0003
+  weight_decay: 0.0001
+  scheduler: cosine_annealing
+  early_stopping_patience: 8
+  amp: true
+  project: runs/cleanliness_classification
+  name: efficientnet_cleanliness
+
+  augmentation:
+    horizontal_flip: true
+    vertical_flip: false
+    random_brightness: 0.3
+    random_contrast: 0.3
+    gaussian_noise: true
+    random_rotation: 15        # le finestre possono essere leggermente inclinate

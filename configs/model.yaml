@@ -1,0 +1,45 @@
+# =============================================================================
+# Fase 1 — Window Detector (YOLOv8)
+# Task: Object Detection — produce bounding box per ogni finestra in facciata
+# =============================================================================
+window_detector:
+  architecture: yolov8n          # n=nano, s=small, m=medium (inizia con n)
+  pretrained_weights: yolov8n.pt # pesi pretrainati su COCO (fine-tuning)
+  dataset_yaml: data/window_detection.yaml
+  output_dir: runs/window_detection
+  experiment_name: yolov8_windows
+
+  inference:
+    confidence_threshold: 0.25   # soglia per accettare un bounding box
+    iou_threshold: 0.45          # NMS: rimuove bounding box sovrapposti
+    img_size: 640
+    device: 0                    # GPU 0 (A10-8Q)
+
+  # Soglie per crop finestre da usare come input EfficientNet
+  crop:
+    min_area_px: 80              # scarta bounding box < 80x80 pixel
+    padding_ratio: 0.05          # margine extra intorno al bbox (5%)
+
+
+# =============================================================================
+# Fase 3 — Cleanliness Classifier (EfficientNet)
+# Task: Binary Classification — clean vs dirty su singola finestra ritagliata
+# =============================================================================
+cleanliness_classifier:
+  backbone: efficientnet_b2
+  num_classes: 2                 # binario: clean / dirty
+  input_size: 224
+  dropout: 0.3
+  pretrained: true               # ImageNet weights
+
+  output_dir: runs/cleanliness_classification
+  experiment_name: efficientnet_cleanliness
+
+  classes:
+    0: clean
+    1: dirty
+
+  # Colori BGR per visualizzazione (OpenCV usa BGR)
+  colors:
+    clean:  [0, 200, 0]          # verde
+    dirty:  [0, 0, 255]          # rosso

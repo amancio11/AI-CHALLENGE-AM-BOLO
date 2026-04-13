@@ -1,0 +1,18 @@
+azure:
+  resource_group: rg-glass-cleanliness
+  location: italynorth
+
+  storage:
+    account_name: stglasscleanliness          # modifica con il tuo nome univoco
+    containers:
+      raw_images: raw-images
+      annotations: annotations
+      models: models
+      results: results
+
+  vm:
+    name: vm-glass-allinone
+    size: Standard_NC24ads_A100_v4
+    ports:
+      cvat: 8080
+      mlflow: 5000

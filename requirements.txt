@@ -1,0 +1,50 @@
+# ── Core deep learning ────────────────────────────────────────────────────────
+torch>=2.2.0
+torchvision>=0.17.0
+torchaudio>=2.2.0
+pytorch-lightning>=2.2.0
+
+# ── Model backbones & vision foundational models ──────────────────────────────
+timm>=0.9.16
+transformers>=4.38.0
+# SAM2 installato a parte (vedi setup_vm.sh)
+# Grounding DINO installato a parte (vedi setup_vm.sh)
+
+# ── CLIP (labeling assistito) ─────────────────────────────────────────────────
+# clip installato a parte: pip install git+https://github.com/openai/CLIP.git
+
+# ── Heatmap / explainability ──────────────────────────────────────────────────
+grad-cam>=1.5.0
+
+# ── Computer Vision utilities ─────────────────────────────────────────────────
+opencv-python>=4.9.0
+Pillow>=10.2.0
+albumentations>=1.4.0
+supervision>=0.19.0
+imagehash>=4.3.1
+
+# ── Data & ML utilities ───────────────────────────────────────────────────────
+scikit-learn>=1.4.0
+scipy>=1.12.0
+numpy>=1.26.0
+pandas>=2.2.0
+
+# ── Experiment tracking ───────────────────────────────────────────────────────
+mlflow>=2.11.0
+
+# ── Azure SDK ─────────────────────────────────────────────────────────────────
+azure-storage-blob>=12.19.0
+azure-identity>=1.15.0
+
+# ── API / serving ─────────────────────────────────────────────────────────────
+fastapi>=0.110.0
+uvicorn>=0.27.0
+python-multipart>=0.0.9
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+requests>=2.31.0
+roboflow>=1.1.0                  # download dataset da Roboflow Universe
+tqdm>=4.66.0
+pyyaml>=6.0.1
+python-dotenv>=1.0.1
+matplotlib>=3.8.0

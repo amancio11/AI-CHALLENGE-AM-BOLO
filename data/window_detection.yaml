@@ -8,7 +8,7 @@
 #       ultralytics supporta sia YOLO txt che COCO JSON nativamente.
 
 # Percorso root — path assoluto sulla VM (formato YOLOv8 nativo con labels .txt)
-path: /mnt/project/data/raw/roboflow/yolov8/window-detection-vnpow-v1
+path: /mnt/project/data/raw/roboflow/yolov8
 
 train: train
 val: valid

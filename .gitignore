@@ -1,4 +1,6 @@
 .env
+.env.local
+scripts/.env.local
 
 # Dati locali (non versionare immagini e pesi)
 data/raw/

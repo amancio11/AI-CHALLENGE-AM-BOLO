@@ -7,9 +7,8 @@
 # NOTA: il dataset Roboflow è già in formato COCO con split train/valid/test.
 #       ultralytics supporta sia YOLO txt che COCO JSON nativamente.
 
-# Percorso root — path assoluto sulla VM
-# (doppio roboflow/ causato da az storage blob download-batch che preserva il path del blob)
-path: /mnt/project/data/raw/roboflow/roboflow/window-detection-vnpow/window-detection-vnpow-v1
+# Percorso root — path assoluto sulla VM (formato YOLOv8 nativo con labels .txt)
+path: /mnt/project/data/raw/roboflow/yolov8/window-detection-vnpow-v1
 
 train: train
 val: valid

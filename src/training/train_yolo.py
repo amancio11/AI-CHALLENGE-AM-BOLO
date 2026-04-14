@@ -48,7 +48,6 @@ def run_training(args: argparse.Namespace) -> None:
     cfg = load_config()
 
     # Parametri: CLI sovrascrive config yaml
-    model_variant = args.model or cfg.get("architecture", "n").replace("yolov8", "")
     epochs = args.epochs or cfg["epochs"]
     batch_size = args.batch or cfg["batch_size"]
     device = args.device or str(cfg["device"])
@@ -56,17 +55,36 @@ def run_training(args: argparse.Namespace) -> None:
     project = str(PROJECT_ROOT / cfg["project"])
     name = cfg["name"]
 
-    weights = f"yolov8{model_variant}.pt"
+    # --model può essere:
+    #   - una variante (n/s/m/l/x)  → usa yolov8{n}.pt pretrained
+    #   - un path a .pt              → continual fine-tuning
+    model_arg = args.model or cfg.get("architecture", "n").replace("yolov8", "")
+    if model_arg in ("n", "s", "m", "l", "x"):
+        model_variant = model_arg
+        weights = f"yolov8{model_variant}.pt"
+    else:
+        # Path a file .pt (relativo alla project root o assoluto)
+        weights_path = Path(model_arg)
+        if not weights_path.is_absolute():
+            weights_path = PROJECT_ROOT / weights_path
+        if not weights_path.exists():
+            raise FileNotFoundError(f"File pesi non trovato: {weights_path}")
+        weights = str(weights_path)
+        model_variant = "custom"
 
     # Verifica che il dataset esista
-    if not DATASET_YAML.exists():
-        raise FileNotFoundError(f"Dataset YAML non trovato: {DATASET_YAML}")
+    dataset_yaml = Path(args.data) if args.data else DATASET_YAML
+    if not dataset_yaml.is_absolute():
+        dataset_yaml = PROJECT_ROOT / dataset_yaml
+    if not dataset_yaml.exists():
+        raise FileNotFoundError(f"Dataset YAML non trovato: {dataset_yaml}")
 
     print(f"\n{'='*60}")
     print(f"  YOLOv8{model_variant.upper()} — Window Detection Training")
     print(f"{'='*60}")
-    print(f"  Dataset:  {DATASET_YAML}")
-    print(f"  Weights:  {weights} (pretrained COCO → fine-tuning)")
+    print(f"  Dataset:  {dataset_yaml}")
+    mode = "continual fine-tuning" if model_variant == "custom" else "pretrained COCO → fine-tuning"
+    print(f"  Weights:  {weights} ({mode})")
     print(f"  Epochs:   {epochs}")
     print(f"  Batch:    {batch_size}")
     print(f"  Img size: {img_size}px")
@@ -84,7 +102,7 @@ def run_training(args: argparse.Namespace) -> None:
     with mlflow.start_run(run_name=f"yolov8{model_variant}_ep{epochs}"):
         # Log parametri
         mlflow.log_params({
-            "model": f"yolov8{model_variant}",
+            "model": weights if model_variant == "custom" else f"yolov8{model_variant}",
             "epochs": epochs,
             "batch_size": batch_size,
             "img_size": img_size,
@@ -98,7 +116,7 @@ def run_training(args: argparse.Namespace) -> None:
         model = YOLO(weights)
 
         results = model.train(
-            data=str(DATASET_YAML),
+            data=str(dataset_yaml),
             epochs=epochs,
             batch=batch_size,
             imgsz=img_size,
@@ -169,8 +187,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--model", type=str, default=None,
-        choices=["n", "s", "m", "l", "x"],
-        help="Variante YOLOv8: n=nano, s=small, m=medium (default: da config yaml)"
+        help="Variante YOLOv8 (n/s/m/l/x) oppure path assoluto/relativo a un file .pt "
+             "per continual fine-tuning (es. models/weights/yolov8_windows_best.pt)"
     )
     parser.add_argument(
         "--epochs", type=int, default=None,
@@ -183,6 +201,10 @@ def main() -> None:
     parser.add_argument(
         "--device", type=str, default=None,
         help="Device: '0' per GPU, 'cpu' per CPU (default: da config yaml)"
+    )
+    parser.add_argument(
+        "--data", type=str, default=None,
+        help="Path al dataset YAML (default: data/window_detection.yaml)"
     )
     args = parser.parse_args()
     run_training(args)

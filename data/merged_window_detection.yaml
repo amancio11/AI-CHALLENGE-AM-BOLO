@@ -1,0 +1,7 @@
+names:
+  0: window
+nc: 1
+path: C:\Users\andreamancini\Downloads\AI-CHALLENGE2\data\raw\merged_yolov8
+test: test/images
+train: train/images
+val: valid/images

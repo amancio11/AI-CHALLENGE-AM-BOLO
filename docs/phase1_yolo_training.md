@@ -1,715 +1,653 @@
-# Fase 1 — Training YOLOv8 Window Detector
+﻿# Fase 1 — Training YOLOv8 Window Detector
 ## Documentazione Tecnica e Funzionale
 
 **Progetto:** Glass Cleanliness Detection — AI Computer Vision  
 **Step:** 1 di 6 — Rilevamento automatico delle finestre nelle facciate  
 **Data:** Aprile 2026  
-**Prerequisito:** Fase 0 completata (VM online, conda glass-cv attivo, GPU disponibile)
+**Stato:** ✅ Fase 1 completa — 3 training eseguiti, modello finale scelto: **v3 merged from scratch** (mAP50=0.947, più robusto su facciate reali)  
+**Prerequisito:** Fase 0 completata (VM online, conda `glass-cv` attivo, GPU A10-8Q disponibile)
 
 ---
 
 ## Indice
 
 1. [Obiettivo](#1-obiettivo)
-2. [Cosa è COCO e Cosa è YOLOv8 — Chiarimento Fondamentale](#2-cosa-è-coco-e-cosa-è-yolov8--chiarimento-fondamentale)
-3. [Il Dataset: window-detection-vnpow](#3-il-dataset-window-detection-vnpow)
-4. [Come Funziona l'Addestramento YOLOv8](#4-come-funziona-laddestramento-yolov8)
-5. [Preparazione dell'Ambiente sulla VM](#5-preparazione-dellambiente-sulla-vm)
+2. [Chiarimento: COCO Dataset vs Formato vs Pesi](#2-chiarimento-coco-dataset-vs-formato-vs-pesi)
+3. [Come Funziona l Addestramento YOLOv8](#3-come-funziona-laddestramento-yolov8)
+4. [Il Dataset: window-detection-vnpow](#4-il-dataset-window-detection-vnpow)
+5. [Setup su VM - Passi Eseguiti](#5-setup-su-vm--passi-eseguiti)
 6. [Script di Training](#6-script-di-training)
-7. [Esecuzione e Monitoraggio](#7-esecuzione-e-monitoraggio)
-8. [Analisi dei Risultati](#8-analisi-dei-risultati)
-9. [Dataset Aggiuntivi (opzionale)](#9-dataset-aggiuntivi-opzionale)
-10. [Criteri di Completamento](#10-criteri-di-completamento)
+7. [Esecuzione del Training](#7-esecuzione-del-training)
+8. [Risultati Smoke Test 1 epoca](#8-risultati-smoke-test-1-epoca)
+9. [Cosa Caricare su Storage per Test Locale](#9-cosa-caricare-su-storage-per-test-locale)
+10. [Analisi Risultati Training Completo](#10-analisi-risultati-training-completo)
+11. [Iterazioni di Training e Scelta Finale](#11-iterazioni-di-training-e-scelta-finale)
+12. [Criteri di Completamento](#12-criteri-di-completamento)
 
 ---
 
 ## 1. Obiettivo
 
-Addestrare un modello YOLOv8 capace di localizzare tutte le finestre presenti in un'immagine di facciata di edificio, producendo per ognuna un **bounding box** `[x, y, w, h]` con relativo **confidence score**.
-
-Questo modello è il primo dei due stadi della pipeline:
+Addestrare un modello YOLOv8 capace di localizzare tutte le finestre presenti in un immagine di facciata di edificio, producendo per ognuna un **bounding box** con relativo **confidence score**.
 
 ```
 Immagine facciata
-      │
-      ▼
- [YOLOv8]  ←── questo è ciò che addestriamo in questa fase
-      │
-      ▼
-bbox di ogni finestra → crop → [EfficientNet] → clean / dirty
+      |
+      v
+ [YOLOv8]  <--- addestriamo in questa fase
+      |
+      v
+bbox di ogni finestra -> crop -> [EfficientNet] -> clean / dirty
 ```
+
+**Object Detection vs Bounding Box:** non sono due cose separate. Il bounding box e l output dell object detection. YOLO produce bounding box — rettangoli `(x, y, w, h)` attorno a ogni finestra trovata. **Non produce maschere pixel-per-pixel** (quella sarebbe segmentazione, rimossa dalla pipeline).
 
 ---
 
-## 2. Cosa è COCO e Cosa è YOLOv8 — Chiarimento Fondamentale
+## 2. Chiarimento: COCO Dataset vs Formato vs Pesi
 
-Questo punto causa spesso confusione. È importante distinguere **tre cose separate**:
-
-### 2.1 Il dataset COCO (Microsoft)
-
-**COCO** (Common Objects in Context) è un dataset pubblico di Microsoft con:
-- ~330.000 immagini di scene quotidiane
-- 80 classi di oggetti: persone, auto, sedie, biciclette, animali...
-- Annotazioni: bounding box + segmentazione
-
-**Non lo usiamo direttamente.** Non scaricheremo il dataset COCO.
-
-### 2.2 Il "formato COCO" per le annotazioni
-
-Separatamente dal dataset, il **formato JSON di COCO** è diventato lo standard de facto per distribuire annotazioni. Contiene:
-
-```json
-{
-  "images": [
-    {"id": 1, "file_name": "facade_001.jpg", "width": 640, "height": 480}
-  ],
-  "annotations": [
-    {
-      "id": 1,
-      "image_id": 1,
-      "category_id": 1,
-      "bbox": [120, 80, 200, 150],
-      "area": 30000
-    }
-  ],
-  "categories": [
-    {"id": 1, "name": "window"}
-  ]
-}
-```
-
-**Questo SÌ lo usiamo** — il dataset Roboflow che abbiamo scaricato usa questo formato per descrivere dove sono le finestre nelle immagini.
-
-> Il "formato COCO" è solo una convenzione JSON. Non ha nulla a che fare con le 80 classi del dataset COCO originale.
-
-### 2.3 I pesi pre-addestrati `yolov8n.pt`
-
-Quando scriviamo `YOLO("yolov8n.pt")`, Ultralytics scarica automaticamente un file di pesi (parametri della rete) che sono stati ottimizzati sul dataset COCO originale (80 classi). Questi pesi:
-- **Non contengono immagini del dataset COCO** — solo i parametri della rete
-- Codificano la conoscenza generale di come riconoscere oggetti (bordi, forme, texture)
-- Vengono usati come punto di partenza per il **fine-tuning** sul nostro dataset
-
-```
-yolov8n.pt  ←── scarica Ultralytics automaticamente (~6MB)
-     │
-     │  fine-tuning su window-detection-vnpow (4840 immagini, 1 classe)
-     ▼
-yolov8n_windows_best.pt  ←── il nostro modello finale
-```
-
-### Riepilogo visivo
-
-| Cosa | Cosa è | Lo usiamo? |
-|------|--------|-----------|
-| Dataset COCO (Microsoft) | 330k immagini, 80 classi | ❌ No |
-| Formato COCO (JSON) | Standard file annotazioni | ✅ Sì (il nostro dataset Roboflow) |
-| Pesi `yolov8n.pt` | Parametri rete pre-addestrata | ✅ Sì (punto di partenza fine-tuning) |
-| `window-detection-vnpow` | Il nostro dataset (finestre) | ✅ Sì (training supervisionato) |
-
----
-
-## 3. Il Dataset: window-detection-vnpow
-
-### Provenienza
-
-Dataset pubblico disponibile su [Roboflow Universe](https://universe.roboflow.com/research-xvh79/window-detection-vnpow), creato dalla community per il rilevamento di finestre nelle facciate.
-
-### Statistiche
-
-| Split | Immagini totali | Immagini reali* | Finestre annotate (stima) |
-|-------|----------------|-----------------|--------------------------|
-| Train | 3.866 | ~2.254 (58%) | ~15.000 |
-| Valid | 484 | ~284 (59%) | ~1.800 |
-| Test | 490 | ~293 (60%) | ~1.900 |
-| **Totale** | **4.840** | **~2.831** | **~18.700** |
-
-*Immagini reali = filtrate da render CGI tramite analisi dell'entropia cromatica
-
-### Struttura su disco
-
-```
-data/raw/roboflow/window-detection-vnpow/window-detection-vnpow-v1/
-├── train/
-│   ├── facade_001.jpg
-│   ├── facade_002.jpg
-│   ├── ...
-│   └── _annotations.coco.json     ← annotazioni bbox per TUTTE le immagini del split
-├── valid/
-│   ├── ...
-│   └── _annotations.coco.json
-└── test/
-    ├── ...
-    └── _annotations.coco.json
-```
-
-### Cosa contiene il file _annotations.coco.json
-
-Il file è un JSON con tre array principali:
-
-```json
-{
-  "info": {...},
-  "licenses": [...],
-  "categories": [{"id": 0, "name": "window", "supercategory": "none"}],
-  "images": [
-    {
-      "id": 0,
-      "license": 1,
-      "file_name": "facade_001.jpg",
-      "height": 640,
-      "width": 640
-    },
-    ...
-  ],
-  "annotations": [
-    {
-      "id": 1,
-      "image_id": 0,
-      "category_id": 0,
-      "bbox": [86, 142, 98, 87],    ← [x_min, y_min, width, height] in pixel
-      "area": 8526,
-      "segmentation": [],
-      "iscrowd": 0
-    },
-    ...
-  ]
-}
-```
-
-**Ogni annotazione** = una finestra in una immagine specifica, descritta dal suo bounding box rettangolare.
-
-### Visualizzare il dataset
-
-Sul sito Roboflow (o localmente con un piccolo script) si possono vedere le immagini con i box sovrapposti. Quello che vedi sul sito è il **ground truth** — le annotazioni manuali originali, non predizioni di un modello.
-
-```python
-# Script rapido per visualizzare le annotazioni localmente
-import json, cv2, random
-from pathlib import Path
-
-annot_path = "data/raw/roboflow/window-detection-vnpow/window-detection-vnpow-v1/train/_annotations.coco.json"
-img_dir = "data/raw/roboflow/window-detection-vnpow/window-detection-vnpow-v1/train"
-
-with open(annot_path) as f:
-    data = json.load(f)
-
-# Scegli immagine casuale
-img_info = random.choice(data["images"])
-img = cv2.imread(f"{img_dir}/{img_info['file_name']}")
-
-# Disegna tutti i bbox di quell'immagine
-for ann in data["annotations"]:
-    if ann["image_id"] == img_info["id"]:
-        x, y, w, h = [int(v) for v in ann["bbox"]]
-        cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 0), 2)
-
-cv2.imwrite("preview.jpg", img)
-print(f"Immagine: {img_info['file_name']} → preview.jpg")
-```
-
----
-
-## 4. Come Funziona l'Addestramento YOLOv8
-
-### 4.1 YOLO in una riga
-
-> YOLO divide l'immagine in una griglia e per ogni cella predice: "c'è un oggetto qui? Di che classe? Dove esattamente?"
-
-### 4.2 Architettura della rete
-
-YOLOv8 è composta da tre parti:
-
-```
-Input (640×640 px)
-      │
-      ▼
-┌──────────────────┐
-│  BACKBONE        │  Estrae feature (bordi, texture, forme)
-│  (CSPDarknet)    │  ← pre-addestrato su COCO, si aggiorna poco
-└──────────────────┘
-      │
-      ▼
-┌──────────────────┐
-│  NECK            │  Combina feature a diverse scale
-│  (PAN-FPN)       │  per rilevare finestre grandi e piccole
-└──────────────────┘
-      │
-      ▼
-┌──────────────────┐
-│  HEAD            │  Predice: bbox + confidence + classe
-│  (Detection)     │  ← si specializza completamente nel fine-tuning
-└──────────────────┘
-      │
-      ▼
-Output: lista di [x, y, w, h, confidence, classe] per ogni finestra
-```
-
-### 4.3 Loss function
-
-Durante il training, la rete impara minimizzando questa loss:
-
-$$\mathcal{L} = \lambda_{box} \cdot \mathcal{L}_{box} + \lambda_{obj} \cdot \mathcal{L}_{obj} + \lambda_{cls} \cdot \mathcal{L}_{cls}$$
-
-| Componente | Cosa misura | Formula |
+| Cosa | Descrizione | Nel progetto |
 |---|---|---|
-| $\mathcal{L}_{box}$ | Quanto il box predetto si discosta dal ground truth | CIoU loss |
-| $\mathcal{L}_{obj}$ | Quanto è sicura la rete che ci sia un oggetto | Binary Cross-Entropy |
-| $\mathcal{L}_{cls}$ | Quanto è corretta la classificazione della classe | Binary Cross-Entropy |
+| **Dataset COCO** (Microsoft) | 330k immagini, 80 classi (persone, auto...) | No — non usato |
+| **Formato COCO** (JSON) | Standard per distribuire annotazioni bbox | Si — dataset Roboflow in COCO format |
+| **`yolov8n.pt`** | Parametri rete pre-addestrata su COCO | Si — punto di partenza fine-tuning |
+| **`window-detection-vnpow`** | Il nostro dataset (finestre in facciate) | Si — training supervisionato |
 
-### 4.4 Fine-tuning: perché funziona con pochi dati
+> Roboflow esporta in formato COCO per compatibilita, ma noi abbiamo scaricato il dataset in **formato YOLOv8 nativo** (file `.txt` per label) che ultralytics legge direttamente senza conversione.
 
-Il fine-tuning sfrutta la **transfer learning**: i layer early del backbone (che riconoscono bordi e texture generici) vengono "congelati" o aggiornati poco. Solo i layer finali vengono specializzati per "finestre".
+---
+
+## 3. Come Funziona l Addestramento YOLOv8
+
+### 3.0 Transfer Learning e Fine-Tuning
+
+Un modello di deep learning è una struttura matematica (architettura) i cui parametri
+interni si chiamano **pesi**. Senza pesi il modello è "vuoto" e non sa fare nulla.
+
+Il training è il processo che ottimizza questi pesi su un dataset specifico.
+Invece di partire da zero (pesi casuali), utilizziamo il **transfer learning**:
 
 ```
-Epoch 1-10:   backpropagation modifica principalmente il HEAD
-Epoch 10-50:  modifica gradualmente anche il NECK
-Epoch 50-100: fine-tuning globale con learning rate decrescente
+1. Architettura YOLOv8n (pesi casuali — modello vuoto)
+         |
+         v
+2. Ultralytics traine su COCO 2017
+   (80 classi, 118k immagini, milioni di oggetti)
+         |
+         v
+3. yolov8n.pt  ← pesi pretrained  (questo scarichiamo da ultralytics)
+         |
+         v  fine-tuning: ottimizziamo su finestre
+4. window-detection dataset (~4800 immagini, 1 classe)
+         |
+         v
+5. yolov8_windows_best.pt  ← i NOSTRI pesi  (best.pt su Blob Storage)
 ```
 
-Con il dataset window-detection-vnpow (4840 immagini) questo converge in ~50-100 epoch.
+**Perché funziona con "pochi" dati:**
+il modello non parte da zero — sa già riconoscere bordi, texture, forme geometriche
+grazie a COCO. Il fine-tuning aggiusta solo lo strato finale per specializzarsi
+sulle finestre. Risultato: mAP50=0.984 con ~4800 immagini.
 
-### 4.5 Augmentation (data augmentation)
+**A inferenza si caricano sempre i propri pesi:**
+```python
+model = YOLO("models/weights/yolov8_windows_best.pt")
+# Non si scarica niente da internet — i pesi sul disco contengono già tutto
+```
 
-YOLOv8 applica trasformazioni casuali a ogni immagine durante il training per rendere il modello più robusto. Configuriamo la augmentation in base al nostro dominio:
+Lo stesso pattern si ripete per EfficientNet (Fase 2):
+pesi ImageNet → fine-tuning su clean/dirty → efficientnet_best.pt
+
+---
+
+### 3.1 Architettura (yolov8n: 130 layer, 3.0M parametri, 8.2 GFLOPs)
+
+```
+Input (640x640 px)
+      |
+      v
+BACKBONE (CSPDarknet)  - Estrae feature: bordi, texture, forme
+                       - Pre-addestrato su COCO, aggiornato poco
+      |
+      v
+NECK (PAN-FPN)         - Combina feature a scale diverse
+                       - Per rilevare finestre grandi e piccole
+      |
+      v
+HEAD (Detect)          - Predice: bbox + confidence + classe
+  751k params          - Si specializza completamente nel fine-tuning
+      |
+      v
+Lista di [x, y, w, h, conf, classe] per ogni finestra trovata
+```
+
+### 3.2 Metriche di Valutazione
+
+| Metrica | Significato | Target |
+|---|---|---|
+| **mAP50** | Mean Average Precision a IoU >= 0.50 | > 0.75 |
+| **mAP50-95** | Media mAP da IoU 0.50 a 0.95 | > 0.55 |
+| **Precision** | Frazione di box predetti corretti | > 0.80 |
+| **Recall** | Frazione di finestre reali trovate | > 0.75 |
+
+IoU = area intersezione / area unione tra box predetto e ground truth.
+
+### 3.3 Augmentation Configurata
 
 | Parametro | Valore | Motivazione |
 |---|---|---|
-| `fliplr=0.5` | Flip orizzontale 50% | Gli edifici sono simmetrici |
-| `flipud=0.0` | No flip verticale | Le finestre hanno un "sopra" |
-| `degrees=5.0` | Rotazione ±5° | Drone leggermente inclinato |
-| `hsv_v=0.4` | Variazione luminosità | Ore del giorno diverse |
-| `scale=0.5` | Zoom ±50% | Distanza variabile dal drone |
-| `mosaic=1.0` | Unisce 4 immagini in 1 | Aumenta la varietà di contesti |
-
-### 4.6 Metriche di valutazione
-
-| Metrica | Formula | Target |
-|---|---|---|
-| **mAP50** | Area sotto la PR curve a IoU≥0.50 | > 0.75 |
-| **mAP50-95** | Media mAP da IoU=0.50 a 0.95 (step 0.05) | > 0.55 |
-| **Precision** | TP / (TP + FP) | > 0.80 |
-| **Recall** | TP / (TP + FN) | > 0.75 |
-
-**IoU** (Intersection over Union):
-$$\text{IoU} = \frac{|B_{pred} \cap B_{gt}|}{|B_{pred} \cup B_{gt}|}$$
-
-Un box è "corretto" se IoU ≥ 0.50 con il ground truth.
+| `fliplr=0.5` | Flip orizzontale 50% | Edifici simmetrici |
+| `flipud=0.0` | No flip verticale | Finestre hanno orientamento fisso |
+| `degrees=5.0` | Rotazione +/-5 gradi | Drone leggermente inclinato |
+| `hsv_v=0.4` | Variazione luminosita | Ore del giorno diverse |
+| `scale=0.5` | Zoom +/-50% | Distanza variabile dal drone |
+| `mosaic=1.0` | Unisce 4 immagini in 1 | Aumenta varieta di contesti |
 
 ---
 
-## 5. Preparazione dell'Ambiente sulla VM
+## 4. Il Dataset: window-detection-vnpow
 
-### 5.1 Struttura directory
+### Provenienza
+Dataset pubblico: https://universe.roboflow.com/research-xvh79/window-detection-vnpow  
+Workspace: `research-xvh79`, project: `window-detection-vnpow`, version: `1`
 
-```bash
-ssh azureuseram@20.9.194.236
+### Statistiche
 
-mkdir -p /mnt/project/{data/raw/roboflow,runs,models,src/training,src/data}
-cd /mnt/project
+| Split | Immagini | Label (window) |
+|-------|----------|----------------|
+| Train | 3.866 | ~15.000 bbox |
+| Valid | 484 | ~1.800 bbox |
+| Test | 490 | ~1.900 bbox |
+| **Totale** | **4.840** | **~18.700 bbox** |
+
+### Formato Scaricato: YOLOv8
+
+```
+data/raw/roboflow/yolov8/
+├── data.yaml              <- config con path e nomi classi (generato da Roboflow)
+├── train/
+│   ├── images/            <- immagini .jpg
+│   └── labels/            <- file .txt, uno per immagine
+│       └── facade_001.txt <- ogni riga = una finestra: "0 cx cy w h" (normalizzati)
+├── valid/
+└── test/
 ```
 
-### 5.2 Trasferimento dataset
-
-**Opzione A — da Azure Storage (se già caricato):**
-```bash
-# Installa azcopy se non presente
-wget https://aka.ms/downloadazcopy-v10-linux -O /tmp/azcopy.tar.gz
-tar -xf /tmp/azcopy.tar.gz -C /tmp/
-sudo mv /tmp/azcopy_linux_amd64_*/azcopy /usr/local/bin/
-azcopy login
-
-azcopy copy \
-  "https://stglasscleanliness.blob.core.windows.net/datasets/window-detection-vnpow-v1" \
-  "/mnt/project/data/raw/roboflow/" --recursive
+Formato label YOLOv8 (ogni riga in .txt):
+```
+0 0.453 0.312 0.156 0.234
+^ ^     ^     ^     ^
+cls cx  cy    w     h   (tutti 0-1 normalizzati rispetto dimensioni immagine)
 ```
 
-**Opzione B — download diretto da Roboflow (più rapido):**
+### Download sulla VM
+
 ```bash
 conda activate glass-cv
-cd /mnt/project
-
-python - << 'EOF'
+python -c "
 from roboflow import Roboflow
-import os
-
-rf = Roboflow(api_key=os.environ["ROBOFLOW_API_KEY"])
-project = rf.workspace("research-xvh79").project("window-detection-vnpow")
-project.version(1).download("coco", location="data/raw/roboflow/window-detection-vnpow-v1")
-EOF
+rf = Roboflow(api_key='<ROBOFLOW_API_KEY>')
+project = rf.workspace('research-xvh79').project('window-detection-vnpow')
+project.version(1).download('yolov8', location='/mnt/project/data/raw/roboflow/yolov8')
+"
 ```
 
-### 5.3 File YAML di configurazione
+---
 
-```bash
-cat > /mnt/project/data/window_detection.yaml << 'EOF'
-path: /mnt/project/data/raw/roboflow/window-detection-vnpow/window-detection-vnpow-v1
-train: train
-val: valid
-test: test
+## 5. Setup su VM — Passi Eseguiti
 
-nc: 1
-names: ['window']
-EOF
+### 5.1 Struttura progetto su VM
+
+```
+/mnt/project/
+├── AI-CHALLENGE-AM-BOLO/   <- repo git clonato (codice + config)
+│   ├── src/training/train_yolo.py
+│   ├── data/window_detection.yaml
+│   ├── configs/training.yaml
+│   └── configs/model.yaml
+├── data/
+│   └── raw/roboflow/
+│       └── yolov8/         <- dataset formato YOLOv8 usato per training
+│           ├── train/images/ + train/labels/
+│           ├── valid/images/ + valid/labels/
+│           └── test/images/  + test/labels/
+├── runs/                   <- output training
+└── logs/
 ```
 
-### 5.4 Verifica dataset
+### 5.2 MLflow Avviato
 
 ```bash
 conda activate glass-cv
-python - << 'EOF'
-import json
-from pathlib import Path
-
-base = Path("data/raw/roboflow/window-detection-vnpow/window-detection-vnpow-v1")
-for split in ["train", "valid", "test"]:
-    annot = base / split / "_annotations.coco.json"
-    with open(annot) as f:
-        data = json.load(f)
-    n_img = len(data["images"])
-    n_ann = len(data["annotations"])
-    print(f"{split}: {n_img} immagini, {n_ann} annotazioni, avg={n_ann/n_img:.1f} finestre/img")
-EOF
+mkdir -p /mnt/mlflow-data/{mlruns,artifacts}
+nohup mlflow server \
+  --host 0.0.0.0 --port 5000 \
+  --backend-store-uri /mnt/mlflow-data/mlruns \
+  --default-artifact-root /mnt/mlflow-data/artifacts \
+  > /mnt/mlflow-data/mlflow.log 2>&1 &
 ```
 
-Output atteso:
-```
-train: 3866 immagini, ~15000 annotazioni, avg~3.9 finestre/img
-valid: 484 immagini, ~1800 annotazioni, avg~3.7 finestre/img
-test:  490 immagini, ~1900 annotazioni, avg~3.9 finestre/img
+MLflow UI: `http://20.9.194.236:5000`
+
+### 5.3 Problema Risolto: MLflow Callback Ultralytics
+
+Ultralytics ha una propria integrazione MLflow interna che interferisce con la nostra.  
+Soluzione:
+
+```bash
+yolo settings mlflow=False
 ```
 
 ---
 
 ## 6. Script di Training
 
-```python
-# src/training/train_yolo.py
-"""
-Fine-tuning YOLOv8 per window detection sul dataset Roboflow window-detection-vnpow.
+File: `src/training/train_yolo.py`
 
-Uso:
-    conda activate glass-cv
-    python src/training/train_yolo.py --model n --epochs 100 --device 0
+Parametri chiave (da `configs/training.yaml`, sezione `yolo`):
 
-Argomenti:
-    --data    : path al file YAML di configurazione dataset
-    --model   : variante YOLOv8 (n=nano, s=small, m=medium)
-    --epochs  : numero di epoche di training
-    --imgsz   : dimensione immagini in input (default 640)
-    --device  : '0' per GPU, 'cpu' per CPU
-"""
-from ultralytics import YOLO
-import mlflow
-from pathlib import Path
-import argparse
-
-
-def train(
-    data_yaml: str = "data/window_detection.yaml",
-    model_size: str = "n",
-    epochs: int = 100,
-    imgsz: int = 640,
-    device: str = "0",
-) -> Path:
-
-    mlflow.set_tracking_uri("http://localhost:5000")
-    mlflow.set_experiment("yolov8-window-detection")
-
-    with mlflow.start_run(run_name=f"yolov8{model_size}_{epochs}ep_img{imgsz}"):
-
-        # Carica il modello pre-addestrato su COCO
-        # yolov8n.pt viene scaricato automaticamente da Ultralytics (~6MB)
-        model = YOLO(f"yolov8{model_size}.pt")
-
-        results = model.train(
-            data=data_yaml,
-            epochs=epochs,
-            imgsz=imgsz,
-            batch=16,
-            device=device,
-            project="runs/window_detection",
-            name=f"yolov8{model_size}_windows",
-            patience=20,       # early stopping: ferma dopo 20 epoch senza miglioramento
-            save=True,
-            save_period=10,    # checkpoint ogni 10 epoch
-            plots=True,        # genera curve loss, PR, F1
-            val=True,          # valuta su validation set ad ogni epoch
-            # Augmentation
-            hsv_h=0.015,
-            hsv_s=0.7,
-            hsv_v=0.4,
-            degrees=5.0,
-            translate=0.1,
-            scale=0.5,
-            flipud=0.0,        # edifici non si capovolgono
-            fliplr=0.5,
-            mosaic=1.0,
-        )
-
-        # Log parametri e metriche su MLflow
-        metrics = results.results_dict
-        mlflow.log_params({
-            "model": f"yolov8{model_size}",
-            "epochs": epochs,
-            "imgsz": imgsz,
-            "batch": 16,
-            "dataset": "window-detection-vnpow-v1",
-        })
-        mlflow.log_metrics({
-            "mAP50":     metrics.get("metrics/mAP50(B)", 0),
-            "mAP50-95":  metrics.get("metrics/mAP50-95(B)", 0),
-            "precision": metrics.get("metrics/precision(B)", 0),
-            "recall":    metrics.get("metrics/recall(B)", 0),
-        })
-
-        best_pt = Path(f"runs/window_detection/yolov8{model_size}_windows/weights/best.pt")
-        if best_pt.exists():
-            mlflow.log_artifact(str(best_pt), artifact_path="weights")
-
-        print(f"\n✓ Training completato")
-        print(f"  mAP50:     {metrics.get('metrics/mAP50(B)', 0):.3f}")
-        print(f"  Precision: {metrics.get('metrics/precision(B)', 0):.3f}")
-        print(f"  Recall:    {metrics.get('metrics/recall(B)', 0):.3f}")
-        print(f"  Modello:   {best_pt}")
-
-    return best_pt
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Fine-tuning YOLOv8 per window detection")
-    parser.add_argument("--data",   default="data/window_detection.yaml")
-    parser.add_argument("--model",  default="n", choices=["n", "s", "m"],
-                        help="n=nano(3.2M param), s=small(11M), m=medium(26M)")
-    parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--imgsz",  type=int, default=640)
-    parser.add_argument("--device", default="0", help="'0'=GPU, 'cpu'=CPU")
-    args = parser.parse_args()
-
-    train(args.data, args.model, args.epochs, args.imgsz, args.device)
+```yaml
+epochs: 100
+batch_size: 16    # A10-8Q (8GB VRAM): batch 16 usa ~2.4GB -> ampio margine
+img_size: 640
+device: 0
+patience: 20      # early stopping se mAP non migliora per 20 epoche
+optimizer: SGD
+lr0: 0.01
+cos_lr: true      # cosine LR decay
+amp: true         # mixed precision -> dimezza uso VRAM
 ```
 
 ---
 
-## 7. Esecuzione e Monitoraggio
+## 7. Esecuzione del Training
 
-### 7.1 Avvio MLflow (prerequisito)
+### Smoke test (1 epoca — verifica che tutto funzioni)
 
 ```bash
-ssh azureuseram@20.9.194.236
+cd /mnt/project/AI-CHALLENGE-AM-BOLO
 conda activate glass-cv
-mkdir -p /mnt/mlflow-data/{mlruns,artifacts}
-
-nohup mlflow server \
-  --host 0.0.0.0 --port 5000 \
-  --backend-store-uri /mnt/mlflow-data/mlruns \
-  --default-artifact-root /mnt/mlflow-data/artifacts \
-  > /mnt/mlflow-data/mlflow.log 2>&1 &
-
-# Verifica: http://20.9.194.236:5000
+python src/training/train_yolo.py --epochs 1 --device 0
 ```
 
-### 7.2 Smoke test (1 epoch, verifica che tutto funzioni)
+### Training completo (background, chiudi pure SSH)
 
 ```bash
-cd /mnt/project
-conda activate glass-cv
-
-python src/training/train_yolo.py --model n --epochs 1 --device 0
+nohup python src/training/train_yolo.py --epochs 100 --device 0 \
+  > runs/train_yolo_full.log 2>&1 &
+echo "Training PID: $!"
 ```
 
-Durata attesa: ~30-60 secondi. Se completa senza errori, procedi.
-
-### 7.3 Training completo in background
+### Monitoraggio
 
 ```bash
-nohup python src/training/train_yolo.py \
-  --model n \
-  --epochs 100 \
-  --device 0 \
-  > /mnt/project/runs/train_yolo_$(date +%Y%m%d_%H%M).log 2>&1 &
+# Log epoche
+tail -f runs/train_yolo_full.log
 
-echo "PID: $!"
-```
-
-### 7.4 Monitoraggio in tempo reale
-
-```bash
-# Segui il log
-tail -f /mnt/project/runs/train_yolo_*.log
-
-# Oppure monitora le metriche YOLOv8 direttamente
-tail -f /mnt/project/runs/window_detection/yolov8n_windows/results.csv
-
-# GPU utilization
+# GPU usage
 watch -n 5 nvidia-smi
+
+# MLflow UI
+xdg-open http://localhost:5000   # oppure dal browser locale: http://20.9.194.236:5000
 ```
 
-### 7.5 Tempi stimati su A10-8Q (8GB VRAM)
+### Tempi stimati su A10-8Q
 
-| Variante | Epoch | Imgsz | Tempo totale |
-|----------|-------|-------|-------------|
-| yolov8n | 100 | 640 | ~8-12 min |
-| yolov8s | 100 | 640 | ~15-20 min |
-| yolov8n | 100 | 1280 | ~25-35 min |
-
-### 7.6 Confronto varianti (strategia consigliata)
-
-```bash
-# Run 1: yolov8n (veloce, baseline)
-python src/training/train_yolo.py --model n --epochs 100
-
-# Se mAP50 < 0.75 → prova yolov8s
-python src/training/train_yolo.py --model s --epochs 100
-
-# Confronta i due run su MLflow: http://20.9.194.236:5000
-```
+| Variante | Epoche | Tempo |
+|---|---|---|
+| yolov8n | 100 | ~90 minuti |
+| yolov8s | 100 | ~150 minuti |
+| yolov8m | 100 | ~240 minuti |
 
 ---
 
-## 8. Analisi dei Risultati
+## 8. Risultati Smoke Test (1 epoca)
 
-### 8.1 File di output
+Eseguito il 13 Aprile 2026 su VM `BOLOGNA-AI-AM-MACHINE` (A10-8Q):
 
+| Metrica | Risultato | Note |
+|---|---|---|
+| **mAP50** | **0.460** | Ottimo per 1 sola epoca |
+| **mAP50-95** | **0.256** | |
+| **Precision** | 0.456 | |
+| **Recall** | 0.544 | |
+| GPU memory usata | 2.42 GB / 8 GB | Ampio margine |
+| Tempo per epoca | ~55 secondi | 100 epoche = ~90 min |
+| Velocita inferenza | 2.7ms/immagine | |
+| Batch size | 16 @ 640px | |
+
+Output salvati in:
 ```
 runs/window_detection/yolov8n_windows/
 ├── weights/
-│   ├── best.pt          ← modello con il mAP50 più alto (usa questo)
-│   └── last.pt          ← ultimo checkpoint
-├── results.csv          ← metriche epoch per epoch
-├── confusion_matrix.png ← falsi positivi / falsi negativi
-├── PR_curve.png         ← curva Precision-Recall
-├── F1_curve.png         ← curva F1 score per soglia di confidence
-├── labels.jpg           ← distribuzione dimensioni bbox nel dataset
-└── val_batch0_pred.jpg  ← visualizzazione predizioni su validation
+│   ├── best.pt     <- modello con miglior mAP50
+│   └── last.pt     <- modello all ultima epoca
+├── results.png     <- curve loss e metriche per epoca
+├── PR_curve.png    <- precision-recall curve
+├── confusion_matrix.png
+└── labels.jpg      <- visualizzazione distribuzione label
 ```
 
-### 8.2 Test su immagini reali
+Run MLflow: `http://20.9.194.236:5000/#/experiments/849287110222805549`
+
+---
+
+## 9. Cosa Caricare su Storage per Test Locale
+
+Per testare il modello trainato in locale (Windows) serve **solo il file `best.pt`** (6.3 MB).
+
+---
+
+### Upload dalla VM → Azure Blob
+
+> **Problema riscontrato:** azcopy sulla VM (installato via snap) non riesce ad accedere
+> a file fuori dalla home dell'utente per via della sandbox snap. Soluzione: copiare
+> il file nella home prima di uploadarlo, poi eliminare la copia.
 
 ```bash
-# Inferenza su tutto il test set
-conda activate glass-cv
-yolo detect predict \
-  model=runs/window_detection/yolov8n_windows/weights/best.pt \
-  source=data/raw/roboflow/window-detection-vnpow/window-detection-vnpow-v1/test \
-  conf=0.4 \
-  save=True \
-  project=runs/predictions \
-  name=test_set
-
-# Le immagini annotate sono in runs/predictions/test_set/
+# Sulla VM — procedura corretta
+sudo cp runs/window_detection/yolov8n_windows/weights/best.pt ~/yolov8_best.pt \
+&& sudo chmod 644 ~/yolov8_best.pt \
+&& key=$(az storage account keys list \
+  --account-name stglasscleanliness \
+  --resource-group kpmg-bologna \
+  --query "[0].value" -o tsv) \
+&& az storage blob upload \
+  --account-name stglasscleanliness \
+  --container-name models \
+  --name yolov8_windows_best.pt \
+  --file ~/yolov8_best.pt \
+  --account-key "$key" \
+  --overwrite \
+&& rm ~/yolov8_best.pt
 ```
 
-### 8.3 Test su immagine singola
+> **Nota:** si usa `az storage blob upload` (non azcopy) perché az non ha i problemi
+> di sandbox snap. Per upload di cartelle intere usare `az storage blob upload-batch`.
+
+---
+
+### Download Storage → PC locale (Git Bash su Windows)
 
 ```bash
-yolo detect predict \
-  model=runs/window_detection/yolov8n_windows/weights/best.pt \
-  source=path/alla/tua/immagine.jpg \
-  conf=0.3 \
-  save=True
+key=$(az storage account keys list \
+  --account-name stglasscleanliness \
+  --resource-group kpmg-bologna \
+  --query "[0].value" -o tsv) \
+&& sas=$(az storage container generate-sas \
+  --account-name stglasscleanliness --name models \
+  --permissions rl --expiry 2026-12-31T23:59:00Z \
+  --account-key "$key" --output tsv) \
+&& "$USERPROFILE/bin/azcopy.exe" copy \
+  "https://stglasscleanliness.blob.core.windows.net/models/yolov8_windows_best.pt?${sas}" \
+  "C:/Users/andreamancini/Downloads/AI-CHALLENGE2/models/weights/yolov8_windows_best.pt"
 ```
 
-### 8.4 Script di validazione con metriche
+File scaricato: `models/weights/yolov8_windows_best.pt` (6.3 MB) ✅
+
+---
+
+### Test del modello in locale (inferenza)
+
+> **Cos'è l'inferenza:** dopo il training (fase in cui la rete impara), l'inferenza è
+> l'applicazione del modello su dati nuovi per ottenere predizioni. Nessun peso viene
+> aggiornato — si usano solo quelli già appresi.
+
+**Dove eseguire:** in locale su Windows, dalla cartella del progetto in PowerShell.
+`ultralytics` è già installato nell'ambiente Python locale.
 
 ```python
-# Valutazione completa sul test set
+# Esecuzione: cd AI-CHALLENGE2 && python scripts/test_model.py
+from ultralytics import YOLO
+from pathlib import Path
+
+model = YOLO("models/weights/yolov8_windows_best.pt")
+
+# Su una singola immagine di facciata
+results = model.predict(
+    source="data/facades/tua_facciata.jpg",
+    conf=0.25,      # confidence threshold: ignora box con confidenza < 25%
+    iou=0.45,       # NMS: rimuove box sovrapposti con IoU > 45%
+    save=True,      # salva immagine con box disegnati
+    project="runs/inference",
+    name="test_locale"
+)
+
+# Stampa i bounding box trovati
+for r in results:
+    print(f"Finestre trovate: {len(r.boxes)}")
+    for box in r.boxes:
+        x1, y1, x2, y2 = box.xyxy[0].tolist()
+        conf = box.conf[0].item()
+        print(f"  ({x1:.0f},{y1:.0f}) -> ({x2:.0f},{y2:.0f})  conf={conf:.2f}")
+
+# Output: immagine annotata in runs/inference/test_locale/
+```
+
+Su una cartella di facciate:
+```python
+results = model.predict(
+    source="data/facades/",    # processa tutte le immagini nella cartella
+    conf=0.25,
+    save=True,
+    project="runs/inference",
+    name="bologna_batch"
+)
+```
+
+---
+
+## 10. Analisi Risultati Training Completo
+
+Training eseguito il 13 Aprile 2026 — 100 epoche in **1h 35min** su A10-8Q.
+
+| Metrica | Target | Risultato | Esito |
+|---|---|---|---|
+| **mAP50** | > 0.75 | **0.984** | ✅ Superato |
+| **mAP50-95** | > 0.55 | **0.855** | ✅ Superato |
+| **Precision** | > 0.80 | **0.954** | ✅ Superato |
+| **Recall** | > 0.75 | **0.954** | ✅ Superato |
+
+Il modello individua il 95.4% delle finestre reali con il 95.4% di precisione.  
+Ottimo per l'uso in Fase 2 (crop finestre da facciate nuove).
+
+MLflow run: `http://20.9.194.236:5000/#/experiments/849287110222805549/runs/0a3d0525777c424a89ccb6187c4b8038`
+
+> **Nota:** MLflow UI raggiungibile solo dalla rete locale della VM o con port forwarding SSH:
+> ```bash
+> ssh -L 5000:localhost:5000 azureuseram@20.9.194.236
+> # poi apri http://localhost:5000 nel browser locale
+> ```
+
+---
+
+## 11. Iterazioni di Training e Scelta Finale
+
+### Panoramica delle 3 iterazioni
+
+| | v1 | v2 | v3 ✅ scelto |
+|---|---|---|---|
+| **Pesi partenza** | yolov8n.pt (COCO) | yolov8_best.pt (v1) | yolov8n.pt (COCO) |
+| **Dataset** | Roboflow only (3866 train) | Merged (7281 train) | Merged (7281 train) |
+| **Epoche** | 100 | 21 (early stop) | 100 |
+| **mAP50** | 0.984 | 0.963 | 0.947 |
+| **mAP50-95** | 0.855 | 0.804 | 0.770 |
+| **Precision** | 0.954 | 0.954 | 0.932 |
+| **Recall** | 0.954 | 0.893 | 0.884 |
+| **Durata** | 1h 35min | 43min | 3h 24min |
+| **Blob Storage** | `yolov8_windows_best.pt` | `yolov8_windows_merged_best.pt` | `yolov8_windows_v3_merged_best.pt` |
+
+---
+
+### Training v1 — Roboflow only (13 Aprile 2026)
+
+Primo training su dataset Roboflow puro (~4840 immagini di finestre ravvicinate).
+mAP50=0.984 sul validation set Roboflow. Ottimo in assoluto, ma validation set
+e training set hanno la stessa distribuzione → rischio overfitting alla distribuzione
+"finestre ravvicinate".
+
+---
+
+### Training v2 — Continual Fine-tuning (14 Aprile 2026) ❌ scartato
+
+**Motivazione:** aggiungere il dataset `monymon/dataset_glasswindow` (facciate intere)
+per migliorare la robustezza. Partendo dai pesi v1 già ottimizzati si sperava di
+convergere in meno epoche.
+
+**Problema: Distribution Shift**
+Il modello v1 era "convinto" della distribuzione Roboflow (finestre ravvicinate, alta
+densità di label). Le facciate intere del glasswindow hanno finestre più piccole,
+più sparse, con più contesto. Il modello non è riuscito a riconciliare le due
+distribuzioni e l'early stopping si è attivato alla epoch 21 (best all'epoch 1).
+
+Confermato empiricamente: test visivo su facciata reale → v2 più impreciso di v1.
+
+---
+
+### Training v3 — Merged from Scratch (14 Aprile 2026) ✅ scelto
+
+**Soluzione al distribution shift:** ricominciare dai pesi COCO generici (`yolov8n.pt`)
+che non hanno bias verso nessuna delle due distribuzioni. Il modello impara entrambe
+le distribuzioni contemporaneamente durante le 100 epoche.
+
+**mAP50 leggermente inferiore a v1** (0.947 vs 0.984) perché il validation set è
+ancora solo Roboflow (484 immagini ravvicinate) — ma il modello è più robusto su
+facciate reali come confermato dal test visivo.
+
+**Test visivo comparativo** (`am_images_test/testDetection.py`):
+- v1: alta precision su finestre ravvicinate, qualche miss su facciate intere
+- v2: impreciso, bounding box errati su facciate reali
+- v3: migliore equilibrio — trova più finestre correttamente su facciate intere ✅
+
+**Modello scelto per la Fase 2:** `models/weights/yolov8_windows_v3_merged_best.pt`
+
+---
+
+### Script di confronto usato per la scelta
+
+```python
+# am_images_test/testDetection.py
 from ultralytics import YOLO
 
-model = YOLO("runs/window_detection/yolov8n_windows/weights/best.pt")
-metrics = model.val(
-    data="data/window_detection.yaml",
-    split="test",
-    conf=0.4,
-    iou=0.5,
-)
-print(f"mAP50:    {metrics.box.map50:.3f}")
-print(f"mAP50-95: {metrics.box.map:.3f}")
-print(f"Precision:{metrics.box.mp:.3f}")
-print(f"Recall:   {metrics.box.mr:.3f}")
+IMAGE = "am_images_test/AMI1.png"
+
+models = {
+    "v1_roboflow":       ("models/weights/yolov8_windows_best.pt",           "mAP50=0.984"),
+    "v2_continual_ft":   ("models/weights/yolov8_windows_merged_best.pt",    "mAP50=0.963"),
+    "v3_merged_scratch": ("models/weights/yolov8_windows_v3_merged_best.pt", "mAP50=0.947"),
+}
+
+for name, (weights, desc) in models.items():
+    model = YOLO(weights)
+    results = model.predict(IMAGE, conf=0.25, save=True, project="runs/inference", name=name)
+    print(f"[{name}] {desc} → {len(results[0].boxes)} finestre trovate")
 ```
 
-### 8.5 Upload modello su Storage
+Output annotati in `runs/inference/v1/`, `v2/`, `v3/`.
+
+---
+
+## 12. Re-Training con Dataset Esteso (storico — vedere Sezione 11)
+
+> Questa sezione documenta la cronologia — per il riepilogo finale vedere Sezione 11.
+
+### Dataset Aggiunto: monymon/dataset_glasswindow
+
+**NOTA STORICA — re-training
+
+### Motivazione
+
+Il primo training (100 epoche, mAP50=0.984) era su solo ~4800 immagini di finestre
+ritagliate ravvicinate. Per migliorare la robustezza su **facciate intere** (contesti diversi,
+scale diverse, finestre parzialmente visibili) è stato aggiunto un secondo dataset.
+
+### Dataset Aggiunto: monymon/dataset_glasswindow
+
+- **Fonte:** https://github.com/monymon/dataset_glasswindow
+- **Caratteristiche:** facciate di edifici intere (non solo finestre ravvicinate), con
+  annotazioni in formato YOLOv8 txt
+- **Classi originali:** 6 — `glass_window(0)`, pillar(1), wall(2), person(3), door(4), car(5)
+- **Classi usate:** solo classe 0 (`glass_window`) → rimappata a `window(0)` del nostro schema
+- **Immagini utili** (con almeno una finestra): da verificare a fine merge
+
+### Merge dei Dataset
+
+Script: `src/data/merge_datasets.py`
+
+Il merge filtra le label del dataset glasswindow tenendo solo `class_id=0`, scarta
+le immagini senza finestre, rinomina i file con prefisso `rf_` (Roboflow) e `gw_`
+(glasswindow) per evitare conflitti.
 
 ```bash
-# Dopo training completato con successo
-azcopy copy \
-  "/mnt/project/runs/window_detection/yolov8n_windows/weights/best.pt" \
-  "https://stglasscleanliness.blob.core.windows.net/models/yolov8_windows_best.pt"
-
-echo "✓ Modello caricato su Azure Storage"
+# In locale
+git clone https://github.com/monymon/dataset_glasswindow.git data/raw/dataset_glasswindow
+python src/data/merge_datasets.py
+# → output: data/raw/merged_yolov8/ + data/merged_window_detection.yaml
 ```
 
----
-
-## 9. Dataset Aggiuntivi (opzionale)
-
-Se il mAP50 non raggiunge il target (>0.75), si può integrare il dataset con immagini aggiuntive di facciate europee/italiane — più simili al dominio target (edifici KPMG).
-
-| Dataset | Immagini | Formato | Note |
-|---------|---------|---------|------|
-| [CMP Facade DB](http://cmp.felk.cvut.cz/~tylecr1/facade/) | 606 | PNG + labeling | Europeo, facciate storiche |
-| [ECP Facade](https://www2.eecs.berkeley.edu/Research/Projects/CS/vision/grouping/resources.html) | ~100 | Varie | Alta qualità |
-| Immagini drone KPMG | TBD | Da annotare | Massima priorità: dominio target |
-
-### Integrazione dataset aggiuntivo
-
-1. Annotare le nuove immagini in CVAT esportando in formato COCO
-2. Unire i JSON di annotazione con lo script:
-
-```python
-# Merge di due dataset COCO
-import json
-
-def merge_coco(datasets: list[str], output: str):
-    merged = {"images": [], "annotations": [], "categories": [{"id": 0, "name": "window"}]}
-    img_id, ann_id = 0, 0
-
-    for ds_path in datasets:
-        with open(ds_path) as f:
-            data = json.load(f)
-
-        # Remap IDs per evitare conflitti
-        id_map = {}
-        for img in data["images"]:
-            id_map[img["id"]] = img_id
-            img["id"] = img_id
-            merged["images"].append(img)
-            img_id += 1
-
-        for ann in data["annotations"]:
-            ann["image_id"] = id_map[ann["image_id"]]
-            ann["id"] = ann_id
-            ann["category_id"] = 0
-            merged["annotations"].append(ann)
-            ann_id += 1
-
-    with open(output, "w") as f:
-        json.dump(merged, f)
-    print(f"Merged: {len(merged['images'])} immagini, {len(merged['annotations'])} annotazioni")
+Upload su Blob e download su VM:
+```bash
+# Su VM — download da Blob (--source = container, --pattern = prefisso)
+az storage blob download-batch \
+  --account-name stglasscleanliness \
+  --source datasets \
+  --destination /mnt/project/data/raw/ \
+  --pattern "merged_yolov8/*" \
+  --account-key "$key"
 ```
 
+### Fine-Tuning (Continual Learning)
+
+Il re-training parte dai pesi `yolov8_windows_best.pt` (già fine-tuned, mAP50=0.984)
+invece di `yolov8n.pt` (pretrained COCO). Questo si chiama **continual fine-tuning**:
+il modello non riparte da zero ma affina la conoscenza già acquisita.
+
+```bash
+# Sulla VM — avviato il 14 Aprile 2026
+nohup python src/training/train_yolo.py \
+  --model models/weights/yolov8_windows_best.pt \
+  --data  data/merged_window_detection.yaml \
+  --epochs 50 \
+  --device 0 \
+  > runs/train_yolo_merged.log 2>&1 &
+```
+
+**Perché 50 epoche invece di 100:** il modello parte già da mAP50≈0.984, la
+convergenza sul dataset esteso richiede meno iterazioni.
+
+**Stato:** 🔄 Training in corso — risultati da aggiornare al termine.
+
 ---
 
-## 10. Criteri di Completamento
+## 13. Criteri di Completamento
 
-La Fase 1 è completata quando:
-
-- [ ] Dataset scaricato sulla VM: `data/raw/roboflow/window-detection-vnpow-v1/`
-- [ ] Smoke test completato senza errori (1 epoch)
-- [ ] Training completo: 100 epoch, convergenza osservata su MLflow
-- [ ] **mAP50 > 0.75** sul validation set
-- [ ] Precision > 0.80, Recall > 0.75
-- [ ] Validazione visiva: predizioni corrette su almeno 20 immagini campione
-- [ ] `best.pt` caricato su Azure Storage
-- [ ] Run MLflow documentata con metriche e artifact
-
-### Prossimo step
-
-Una volta soddisfatti questi criteri, si procede alla **Fase 2 — Dataset Clean/Dirty**:
-il modello YOLOv8 appena trainato viene usato per estrarre automaticamente i crop di finestre dalle immagini di facciate che vuoi etichettare come clean/dirty.
-
-Vedere [pipeline_documentation.md](pipeline_documentation.md#fase-3--dataset-cleandirty) per i dettagli.
+- [x] Dataset `window-detection-vnpow-v1` scaricato in formato YOLOv8 sulla VM
+- [x] `data/window_detection.yaml` configurato correttamente
+- [x] MLflow server avviato (`http://20.9.194.236:5000`)
+- [x] Script `src/training/train_yolo.py` funzionante (aggiornato per accettare `--model path.pt` e `--data`)
+- [x] Smoke test 1 epoca completato (mAP50=0.46, GPU 2.4GB/8GB)
+- [x] Training v1 — 100 epoche, Roboflow only (mAP50=0.984, 1h 35min)
+- [x] Training v2 — 21 epoche, continual fine-tuning (mAP50=0.963, scartato per distribution shift)
+- [x] Training v3 — 100 epoche, merged from scratch (mAP50=0.947, 3h 24min) ✅ **scelto**
+- [x] Tutti e 3 i modelli su Azure Blob Storage (`models/`)
+- [x] Tutti e 3 i modelli scaricati in locale (`models/weights/`)
+- [x] Test visivo comparativo completato — v3 scelto come modello finale
+- [x] Dataset glasswindow mergiato con Roboflow (`src/data/merge_datasets.py`)
+- [ ] Fase 2: training EfficientNet clean/dirty con dataset 200+200 immagini
 
 ---
 
-*Fase 1 — Training YOLOv8 Window Detector — Glass Cleanliness Detection — Aprile 2026*
+## Prossimi Step (dopo training completo)
+
+```bash
+# 1. Verifica metriche finali
+tail -20 runs/train_yolo_full.log
+
+# 2. Carica best.pt su Storage (vedi Sezione 9)
+
+# 3. Scarica e testa in locale (vedi Sezione 9)
+
+# 4. Fase 2: usa YOLO per estrarre finestre dalle facciate Bologna
+#    Output: data/windows/{train,valid,test}/{clean,dirty}/
+#    Vedi: docs/pipeline_documentation.md — Fase 2
+```

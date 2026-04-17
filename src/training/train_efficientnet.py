@@ -43,7 +43,7 @@ from torchvision import datasets, transforms
 
 # ── Percorsi ────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = ROOT / "data" / "windows_efficientnet"
+DATA_DIR = ROOT / "windows_efficientnet"
 WEIGHTS_DIR = ROOT / "models" / "weights"
 
 MODEL_NAME   = "efficientnet_b2"

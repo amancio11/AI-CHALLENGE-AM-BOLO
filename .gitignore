@@ -7,11 +7,14 @@ data/raw/
 data/patches/
 data/facades/
 data/windows/
+data/windows_efficientnet/
 models/weights/
 runs/
 
 # Prevenzione data/ accidentali in sottocartelle src/
 src/**/data/
+
+am_images_test/
 
 # Python
 __pycache__/

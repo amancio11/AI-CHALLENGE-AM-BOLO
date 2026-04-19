@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Challenge — Bicchieri Team</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #07090f;
+      --card-bg:   rgba(13, 20, 33, 0.80);
+      --border:    rgba(66, 112, 255, 0.18);
+      --accent:    #3d8bfe;
+      --accent2:   #8b5cf6;
+      --glow:      rgba(61, 139, 254, 0.25);
+      --clean:     #22c55e;
+      --dirty:     #ef4444;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --radius:    16px;
+    }
+
+    html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); overflow-x: hidden; }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% -10%, rgba(61,139,254,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 110%, rgba(139,92,246,0.10) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 40% at 50% 50%,  rgba(6,182,212,0.05)  0%, transparent 70%);
+      pointer-events: none; z-index: 0;
+    }
+
+    .page { position: relative; z-index: 1; min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── HEADER ──────────────────────────────────────────────────── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 2rem;
+      background: rgba(7,9,15,0.85); backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100;
+    }
+
+    .logo { display: flex; align-items: center; gap: .75rem; }
+
+    .logo-icon {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.25rem;
+      box-shadow: 0 0 20px var(--glow);
+    }
+
+    .logo h1 { font-size: 1rem; font-weight: 700; line-height: 1.2; }
+    .logo h1 span { display: block; font-size: .63rem; font-weight: 400; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
+
+    .nav-tabs { display: flex; gap: .25rem; background: rgba(255,255,255,.05); border-radius: 10px; padding: .25rem; }
+
+    .nav-tab {
+      padding: .45rem 1.2rem; border: none; background: transparent;
+      color: var(--muted); border-radius: 8px; cursor: pointer;
+      font-size: .85rem; font-weight: 600; font-family: inherit; transition: all .2s;
+    }
+    .nav-tab.active { background: var(--accent); color: #fff; box-shadow: 0 2px 12px rgba(61,139,254,.4); }
+    .nav-tab:not(.active):hover { color: var(--text); background: rgba(255,255,255,.08); }
+
+    /* ── LAYOUT ──────────────────────────────────────────────────── */
+    main { flex: 1; padding: 2rem; max-width: 920px; margin: 0 auto; width: 100%; }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── CARD ────────────────────────────────────────────────────── */
+    .card {
+      background: var(--card-bg); backdrop-filter: blur(20px);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1.5rem; box-shadow: 0 4px 24px rgba(0,0,0,.3);
+    }
+
+    /* ── UPLOAD ZONE ─────────────────────────────────────────────── */
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: var(--radius);
+      padding: 3rem 2rem; text-align: center; cursor: pointer;
+      transition: all .3s; position: relative; overflow: hidden;
+      background: var(--card-bg); backdrop-filter: blur(20px);
+      margin-bottom: 1rem;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(61,139,254,.05);
+      box-shadow: 0 0 32px rgba(61,139,254,.15);
+    }
+    .upload-icon { font-size: 3rem; color: var(--accent); margin-bottom: 1rem; filter: drop-shadow(0 0 12px var(--glow)); }
+    .upload-zone h2 { font-size: 1.3rem; font-weight: 600; margin-bottom: .5rem; }
+    .upload-zone p { color: var(--muted); font-size: .88rem; }
+    .upload-zone .link { color: var(--accent); cursor: pointer; text-decoration: underline; }
+    .preview-img { max-height: 300px; max-width: 100%; border-radius: 10px; object-fit: contain; }
+
+    /* ── SETTINGS ────────────────────────────────────────────────── */
+    .settings-toggle {
+      display: flex; align-items: center; gap: .5rem;
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      border-radius: 8px; padding: .4rem 1rem; cursor: pointer;
+      font-family: inherit; font-size: .85rem; margin-bottom: 1rem; transition: all .2s;
+    }
+    .settings-toggle:hover { border-color: var(--accent); color: var(--text); }
+
+    .settings-panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; display: none; backdrop-filter: blur(20px); }
+    .settings-panel.open { display: block; }
+
+    .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .setting-item label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: .35rem; }
+    .setting-item .val { float: right; font-weight: 700; color: var(--accent); }
+    .setting-item input[type="range"] { width: 100%; accent-color: var(--accent); margin-top: .25rem; }
+    .setting-item input[type="number"] { width: 100%; background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 8px; padding: .4rem .75rem; color: var(--text); font-family: inherit; font-size: .88rem; }
+
+    /* ── ANALYZE BUTTON ──────────────────────────────────────────── */
+    .analyze-btn {
+      width: 100%; padding: 1.05rem; margin-bottom: 1.5rem;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none; border-radius: var(--radius); color: #fff;
+      font-size: 1rem; font-weight: 700; font-family: inherit; letter-spacing: .06em;
+      cursor: pointer; transition: all .3s;
+      box-shadow: 0 4px 20px rgba(61,139,254,.35);
+      display: flex; align-items: center; justify-content: center; gap: .75rem;
+    }
+    .analyze-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(61,139,254,.55); }
+    .analyze-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; filter: grayscale(.4); }
+
+    /* ── LOADING ─────────────────────────────────────────────────── */
+    .loading-wrap { text-align: center; padding: 2.5rem; }
+
+    .spinner {
+      width: 52px; height: 52px;
+      border: 3px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .9s linear infinite; margin: 0 auto 1.5rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .progress-bar-wrap { height: 3px; background: var(--border); border-radius: 2px; margin-bottom: 1.5rem; overflow: hidden; }
+    .progress-bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); width: 0%; transition: width .5s ease; border-radius: 2px; }
+
+    .loading-steps { display: flex; flex-direction: column; gap: .6rem; max-width: 300px; margin: 0 auto; }
+    .loading-step { display: flex; align-items: center; gap: .65rem; font-size: .85rem; color: var(--muted); transition: color .3s; }
+    .loading-step.active { color: var(--accent); }
+    .loading-step.done   { color: var(--clean); }
+    .step-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: all .3s; }
+    .loading-step.active .step-dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .loading-step.done   .step-dot { background: var(--clean); }
+
+    /* ── RESULTS ─────────────────────────────────────────────────── */
+    .results-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem; }
+
+    .badge { display: inline-flex; align-items: center; gap: .4rem; padding: .3rem .9rem; border-radius: 100px; font-size: .78rem; font-weight: 600; }
+    .badge-local { background: rgba(61,139,254,.15); color: var(--accent); border: 1px solid rgba(61,139,254,.3); }
+    .badge-gpt   { background: rgba(139,92,246,.15);  color: #a78bfa;       border: 1px solid rgba(139,92,246,.3); }
+    .badge-error { background: rgba(239,68,68,.15);   color: var(--dirty);  border: 1px solid rgba(239,68,68,.3); }
+
+    .stats-row { display: flex; gap: .6rem; flex-wrap: wrap; }
+    .stat-chip { display: flex; align-items: center; gap: .45rem; padding: .4rem .9rem; border-radius: 100px; font-size: .82rem; font-weight: 600; background: rgba(255,255,255,.05); border: 1px solid var(--border); }
+    .stat-chip.clean { border-color: rgba(34,197,94,.3); color: var(--clean); }
+    .stat-chip.dirty { border-color: rgba(239,68,68,.3); color: var(--dirty); }
+
+    .result-img-wrap { border-radius: var(--radius); overflow: hidden; margin-bottom: 1rem; background: #000; text-align: center; }
+    .result-img-wrap img { max-width: 100%; max-height: 600px; object-fit: contain; display: block; margin: 0 auto; }
+
+    /* ── GPT BOX ─────────────────────────────────────────────────── */
+    .gpt-box { background: rgba(139,92,246,.08); border: 1px solid rgba(139,92,246,.25); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; }
+    .gpt-box h3 { font-size: .88rem; color: #a78bfa; margin-bottom: .5rem; display: flex; align-items: center; gap: .5rem; }
+    .gpt-box p  { font-size: .88rem; color: var(--text); line-height: 1.65; }
+
+    /* ── WINDOW LIST ─────────────────────────────────────────────── */
+    .section-title { font-size: .72rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 1.25rem 0 .65rem; display: flex; align-items: center; gap: .75rem; }
+    .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    .window-list { display: flex; flex-direction: column; gap: .45rem; margin-bottom: 1rem; }
+    .window-item { display: flex; align-items: center; gap: .75rem; padding: .6rem 1rem; background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: 10px; font-size: .84rem; }
+    .window-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .window-dot.clean { background: var(--clean); box-shadow: 0 0 7px var(--clean); }
+    .window-dot.dirty { background: var(--dirty); box-shadow: 0 0 7px var(--dirty); }
+    .window-label { font-weight: 700; min-width: 52px; }
+    .window-label.clean { color: var(--clean); }
+    .window-label.dirty { color: var(--dirty); }
+    .window-conf { color: var(--muted); }
+    .window-id   { color: var(--muted); font-size: .75rem; margin-left: auto; }
+    .window-desc { color: var(--muted); font-size: .75rem; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── ACTIONS + JSON ──────────────────────────────────────────── */
+    .action-row { display: flex; gap: .65rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .btn { display: inline-flex; align-items: center; gap: .45rem; padding: .55rem 1.1rem; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,.05); color: var(--text); font-family: inherit; font-size: .83rem; font-weight: 600; cursor: pointer; text-decoration: none; transition: all .2s; }
+    .btn:hover { background: rgba(255,255,255,.1); border-color: var(--accent); color: var(--accent); }
+
+    .json-body { margin-top: .75rem; background: rgba(0,0,0,.4); border-radius: 10px; padding: 1rem; overflow: auto; max-height: 340px; border: 1px solid var(--border); }
+    .json-body pre { font-family: 'Courier New', monospace; font-size: .76rem; color: #7dd3fc; white-space: pre; line-height: 1.55; }
+
+    /* ── HISTORY GRID ────────────────────────────────────────────── */
+    .history-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+    .history-toolbar h2 { font-size: 1.1rem; font-weight: 700; }
+
+    .history-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 1rem; }
+
+    .history-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: all .25s; backdrop-filter: blur(20px); }
+    .history-card:hover { border-color: var(--accent); transform: translateY(-3px); box-shadow: 0 8px 24px rgba(61,139,254,.2); }
+
+    .history-thumb { width: 100%; height: 130px; background: rgba(255,255,255,.03); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 2rem; overflow: hidden; }
+    .history-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .history-meta { padding: .75rem; }
+    .history-meta .fname { font-size: .82rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: .3rem; }
+    .history-meta .ts    { font-size: .72rem; color: var(--muted); margin-bottom: .5rem; }
+    .pills { display: flex; gap: .35rem; flex-wrap: wrap; }
+    .pill { font-size: .68rem; font-weight: 700; padding: .15rem .5rem; border-radius: 100px; }
+    .pill.clean { background: rgba(34,197,94,.15); color: var(--clean); }
+    .pill.dirty { background: rgba(239,68,68,.15); color: var(--dirty); }
+    .pill.gpt   { background: rgba(139,92,246,.15); color: #a78bfa; }
+    .pill.local { background: rgba(61,139,254,.15); color: var(--accent); }
+
+    /* ── MODAL ───────────────────────────────────────────────────── */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.72); backdrop-filter: blur(8px); z-index: 200; }
+    .modal-panel    { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 201; width: min(92vw, 700px); max-height: 90vh; overflow-y: auto; }
+
+    .modal-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; }
+    .modal-close { background: rgba(255,255,255,.08); border: 1px solid var(--border); color: var(--text); border-radius: 8px; width: 32px; height: 32px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: .9rem; transition: background .2s; flex-shrink: 0; }
+    .modal-close:hover { background: rgba(255,255,255,.16); }
+
+    /* ── TOAST ───────────────────────────────────────────────────── */
+    .toast-wrap { position: fixed; top: 1rem; right: 1rem; z-index: 999; display: flex; flex-direction: column; gap: .5rem; }
+    .toast { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: .7rem 1.2rem; display: flex; align-items: center; gap: .7rem; font-size: .84rem; backdrop-filter: blur(20px); animation: slideIn .3s ease; box-shadow: 0 4px 20px rgba(0,0,0,.3); }
+    .toast.error   { border-color: rgba(239,68,68,.45); }
+    .toast.success { border-color: rgba(34,197,94,.45);  }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+    /* ── EMPTY STATE ─────────────────────────────────────────────── */
+    .empty-state { text-align: center; padding: 4rem 2rem; color: var(--muted); }
+    .empty-state i { font-size: 3rem; margin-bottom: 1rem; opacity: .35; display: block; }
+    .empty-state p { font-size: .9rem; }
+
+    .hidden { display: none !important; }
+
+    /* ── RESPONSIVE ──────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      main { padding: 1rem; }
+      header { padding: .75rem 1rem; }
+      .settings-grid { grid-template-columns: 1fr; }
+      .history-grid  { grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); }
+      .logo h1 span  { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── HEADER ─────────────────────────────────────────────────────── -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🪟</div>
+      <h1>AI CHALLENGE <span>Bicchieri Team — Window Cleanliness</span></h1>
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-tab="analisi"><i class="fa-solid fa-magnifying-glass-chart"></i> Analisi</button>
+      <button class="nav-tab" data-tab="storico"><i class="fa-solid fa-clock-rotate-left"></i> Storico</button>
+    </div>
+  </header>
+
+  <!-- ── MAIN ───────────────────────────────────────────────────────── -->
+  <main>
+
+    <!-- ╔══════════════════════════════════╗ -->
+    <!-- ║  TAB: ANALISI                    ║ -->
+    <!-- ╚══════════════════════════════════╝ -->
+    <div id="tab-analisi" class="tab-content active">
+
+      <!-- Upload zone -->
+      <div class="upload-zone" id="upload-zone">
+        <div id="upload-placeholder">
+          <div class="upload-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+          <h2>Trascina l'immagine qui</h2>
+          <p>oppure <span class="link" id="upload-link">clicca per selezionare</span></p>
+          <p style="margin-top:.4rem;font-size:.75rem">JPG · PNG · JPEG · WEBP · max 50 MB</p>
+        </div>
+        <img id="upload-preview" class="preview-img hidden" alt="preview">
+        <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.webp,.bmp" hidden>
+      </div>
+
+      <!-- Settings toggle -->
+      <button class="settings-toggle" id="settings-toggle">
+        <i class="fa-solid fa-sliders"></i> Impostazioni avanzate
+        <i class="fa-solid fa-chevron-down" style="margin-left:auto;transition:transform .2s" id="settings-chevron"></i>
+      </button>
+
+      <!-- Settings panel -->
+      <div class="settings-panel" id="settings-panel">
+        <div class="settings-grid">
+          <div class="setting-item">
+            <label>Confidenza box grandi <span class="val" id="v-conf-large">0.30</span></label>
+            <input type="range" id="conf-large" min="0.05" max="0.95" step="0.05" value="0.30">
+          </div>
+          <div class="setting-item">
+            <label>Confidenza box piccoli <span class="val" id="v-conf-small">0.70</span></label>
+            <input type="range" id="conf-small" min="0.05" max="0.95" step="0.05" value="0.70">
+          </div>
+          <div class="setting-item">
+            <label>Soglia dimensione "grande" (px)</label>
+            <input type="number" id="large-size" value="300" min="50" max="1000">
+          </div>
+          <div class="setting-item">
+            <label>Dimensione minima crop (px)</label>
+            <input type="number" id="min-size" value="66" min="20" max="500">
+          </div>
+        </div>
+      </div>
+
+      <!-- Analyze button -->
+      <button class="analyze-btn" id="analyze-btn" disabled>
+        <i class="fa-solid fa-magnifying-glass-chart"></i> ANALIZZA FACCIATA
+      </button>
+
+      <!-- Loading -->
+      <div class="card hidden" id="loading-card">
+        <div class="loading-wrap">
+          <div class="spinner"></div>
+          <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+          <div class="loading-steps">
+            <div class="loading-step active" data-step="0"><div class="step-dot"></div> Caricamento immagine…</div>
+            <div class="loading-step" data-step="1"><div class="step-dot"></div> Rilevamento finestre (YOLOv8)…</div>
+            <div class="loading-step" data-step="2"><div class="step-dot"></div> Classificazione pulizia (EfficientNet)…</div>
+            <div class="loading-step" data-step="3"><div class="step-dot"></div> Generazione report…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results section -->
+      <div id="results-section" class="hidden">
+
+        <!-- Header row: badge + stats -->
+        <div class="results-header">
+          <span id="source-badge" class="badge"></span>
+          <div class="stats-row">
+            <div class="stat-chip"        id="stat-total"><i class="fa-solid fa-border-all"></i> — finestre</div>
+            <div class="stat-chip clean"  id="stat-clean"><i class="fa-solid fa-circle-check"></i> — pulite</div>
+            <div class="stat-chip dirty"  id="stat-dirty"><i class="fa-solid fa-circle-xmark"></i> — sporche</div>
+          </div>
+        </div>
+
+        <!-- Annotated image -->
+        <div class="result-img-wrap">
+          <img id="result-image" src="" alt="Risultato analisi">
+        </div>
+
+        <!-- GPT-4o assessment (only when fallback) -->
+        <div id="gpt-assessment" class="gpt-box hidden">
+          <h3><i class="fa-solid fa-robot"></i> Azure GPT-4o — Nessuna finestra rilevata localmente</h3>
+          <p id="gpt-text"></p>
+        </div>
+
+        <!-- Window list -->
+        <div class="section-title">Finestre rilevate</div>
+        <div class="window-list" id="window-list"></div>
+
+        <!-- Actions -->
+        <div class="action-row">
+          <button class="btn" id="dl-image-btn"><i class="fa-solid fa-image"></i> Scarica immagine</button>
+          <button class="btn" id="dl-json-btn"><i class="fa-solid fa-file-code"></i> Scarica JSON</button>
+          <button class="btn" id="json-toggle-btn"><i class="fa-solid fa-code"></i> Visualizza JSON</button>
+        </div>
+
+        <!-- JSON viewer -->
+        <div id="json-viewer-wrap" class="hidden">
+          <div class="json-body"><pre id="json-pre"></pre></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ╔══════════════════════════════════╗ -->
+    <!-- ║  TAB: STORICO                    ║ -->
+    <!-- ╚══════════════════════════════════╝ -->
+    <div id="tab-storico" class="tab-content">
+      <div class="history-toolbar">
+        <h2><i class="fa-solid fa-clock-rotate-left" style="color:var(--accent);margin-right:.5rem"></i>Storico Analisi</h2>
+        <div style="display:flex;gap:.5rem">
+          <button class="btn" id="refresh-btn"><i class="fa-solid fa-rotate-right"></i> Aggiorna</button>
+          <button class="btn" id="delete-all-btn" style="color:var(--dirty);border-color:rgba(239,68,68,.3)" title="Elimina tutto lo storico"><i class="fa-solid fa-trash"></i> Elimina tutto</button>
+        </div>
+      </div>
+      <div id="history-grid" class="history-grid">
+        <div class="empty-state" style="grid-column:1/-1">
+          <i class="fa-solid fa-clock-rotate-left"></i>
+          <p>Passa alla tab Analisi per iniziare</p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── MODAL ─────────────────────────────────────────────────────────── -->
+<div id="modal" class="hidden">
+  <div class="modal-backdrop" id="modal-backdrop"></div>
+  <div class="modal-panel">
+    <div class="card">
+      <div class="modal-header">
+        <div>
+          <div id="modal-filename" style="font-weight:700;margin-bottom:.25rem"></div>
+          <div id="modal-ts" style="font-size:.75rem;color:var(--muted)"></div>
+        </div>
+        <button class="modal-close" id="modal-close"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <img id="modal-image" style="width:100%;border-radius:10px;margin-bottom:1rem" alt="">
+      <div id="modal-stats" class="stats-row" style="margin-bottom:1rem"></div>
+      <div id="modal-gpt-box" class="gpt-box hidden" style="margin-bottom:1rem">
+        <h3><i class="fa-solid fa-robot"></i> Azure GPT-4o Assessment</h3>
+        <p id="modal-gpt-text"></p>
+      </div>
+      <div class="section-title">Finestre</div>
+      <div class="window-list" id="modal-window-list" style="margin-bottom:1rem"></div>
+      <div class="action-row">
+        <a class="btn" id="modal-dl-img"><i class="fa-solid fa-image"></i> Immagine</a>
+        <a class="btn" id="modal-dl-json"><i class="fa-solid fa-file-code"></i> JSON</a>
+        <button class="btn" id="modal-delete-btn" style="color:var(--dirty);border-color:rgba(239,68,68,.3);margin-left:auto"><i class="fa-solid fa-trash"></i> Elimina</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── TOASTS ─────────────────────────────────────────────────────────── -->
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let currentRunId = null;
+let selectedFile = null;
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function toast(msg, type = 'info') {
+  const wrap = document.getElementById('toast-wrap');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  const color = type === 'error' ? 'var(--dirty)' : type === 'success' ? 'var(--clean)' : 'var(--accent)';
+  const icon  = type === 'error' ? 'fa-circle-exclamation' : type === 'success' ? 'fa-circle-check' : 'fa-circle-info';
+  el.innerHTML = `<i class="fa-solid ${icon}" style="color:${color}"></i> ${msg}`;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 4500);
+}
+
+function formatTs(iso) {
+  return new Date(iso).toLocaleString('it-IT', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.nav-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    if (btn.dataset.tab === 'storico') loadHistory();
+  });
+});
+
+// ── UPLOAD ────────────────────────────────────────────────────────────────────
+const zone       = document.getElementById('upload-zone');
+const fileInput  = document.getElementById('file-input');
+const preview    = document.getElementById('upload-preview');
+const placeholder = document.getElementById('upload-placeholder');
+
+document.getElementById('upload-link').addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
+zone.addEventListener('click', e => { if (!e.target.closest('.preview-img')) fileInput.click(); });
+zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+
+function setFile(file) {
+  selectedFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    preview.src = e.target.result;
+    preview.classList.remove('hidden');
+    placeholder.classList.add('hidden');
+  };
+  reader.readAsDataURL(file);
+  document.getElementById('analyze-btn').disabled = false;
+  document.getElementById('results-section').classList.add('hidden');
+  document.getElementById('loading-card').classList.add('hidden');
+}
+
+// ── SETTINGS ──────────────────────────────────────────────────────────────────
+document.getElementById('settings-toggle').addEventListener('click', () => {
+  const panel   = document.getElementById('settings-panel');
+  const chevron = document.getElementById('settings-chevron');
+  panel.classList.toggle('open');
+  chevron.style.transform = panel.classList.contains('open') ? 'rotate(180deg)' : '';
+});
+
+['conf-large', 'conf-small'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => {
+    document.getElementById('v-' + id).textContent = parseFloat(el.value).toFixed(2);
+  });
+});
+
+// ── ANALYZE ───────────────────────────────────────────────────────────────────
+document.getElementById('analyze-btn').addEventListener('click', runAnalyze);
+
+async function runAnalyze() {
+  if (!selectedFile) return;
+
+  document.getElementById('results-section').classList.add('hidden');
+  document.getElementById('loading-card').classList.remove('hidden');
+  document.getElementById('analyze-btn').disabled = true;
+  document.getElementById('json-viewer-wrap').classList.add('hidden');
+
+  // Animate loading steps
+  const steps = document.querySelectorAll('.loading-step');
+  const bar   = document.getElementById('progress-bar');
+  let step = 0;
+
+  function advance() {
+    steps.forEach((s, i) => {
+      s.classList.remove('active', 'done');
+      if (i < step) s.classList.add('done');
+      if (i === step) s.classList.add('active');
+    });
+    bar.style.width = `${(step / (steps.length - 1)) * 100}%`;
+  }
+  advance();
+  const timer = setInterval(() => { if (step < steps.length - 1) { step++; advance(); } else clearInterval(timer); }, 1300);
+
+  // Build form
+  const form = new FormData();
+  form.append('image',      selectedFile);
+  form.append('conf_large', document.getElementById('conf-large').value);
+  form.append('conf_small', document.getElementById('conf-small').value);
+  form.append('large_size', document.getElementById('large-size').value);
+  form.append('min_size',   document.getElementById('min-size').value);
+
+  try {
+    const resp = await fetch('/analyze', { method: 'POST', body: form });
+    const data = await resp.json();
+
+    clearInterval(timer);
+    step = steps.length - 1; advance();
+    bar.style.width = '100%';
+
+    if (!resp.ok || data.error) {
+      toast(data.error || 'Errore sconosciuto', 'error');
+      document.getElementById('loading-card').classList.add('hidden');
+      document.getElementById('analyze-btn').disabled = false;
+      return;
+    }
+
+    setTimeout(() => {
+      document.getElementById('loading-card').classList.add('hidden');
+      renderResults(data);
+      document.getElementById('analyze-btn').disabled = false;
+    }, 400);
+
+  } catch (err) {
+    clearInterval(timer);
+    toast('Errore di connessione: ' + err.message, 'error');
+    document.getElementById('loading-card').classList.add('hidden');
+    document.getElementById('analyze-btn').disabled = false;
+  }
+}
+
+// ── RENDER RESULTS ────────────────────────────────────────────────────────────
+function renderResults(data) {
+  currentRunId = data.id;
+  const r = data.report;
+
+  // Badge sorgente
+  const badge = document.getElementById('source-badge');
+  const srcMap = {
+    local_model:      ['badge-local', 'fa-microchip',          'Modello locale'],
+    azure_gpt4o:      ['badge-gpt',   'fa-robot',              'Azure GPT-4o'],
+    azure_gpt4o_error:['badge-error', 'fa-triangle-exclamation','GPT-4o — errore'],
+  };
+  const [cls, icon, label] = srcMap[r.source] || ['badge-error', 'fa-question', r.source];
+  badge.className = `badge ${cls}`;
+  badge.innerHTML = `<i class="fa-solid ${icon}"></i> ${label}`;
+
+  // Stats
+  document.getElementById('stat-total').innerHTML = `<i class="fa-solid fa-border-all"></i> ${r.total} finestre`;
+  document.getElementById('stat-clean').innerHTML = `<i class="fa-solid fa-circle-check"></i> ${r.clean} pulite`;
+  document.getElementById('stat-dirty').innerHTML = `<i class="fa-solid fa-circle-xmark"></i> ${r.dirty} sporche`;
+
+  // Immagine annotata
+  document.getElementById('result-image').src = `data:image/jpeg;base64,${data.image_b64}`;
+
+  // GPT-4o assessment
+  const gptBox = document.getElementById('gpt-assessment');
+  if (r.source === 'azure_gpt4o' || r.source === 'azure_gpt4o_error') {
+    gptBox.classList.remove('hidden');
+    document.getElementById('gpt-text').textContent = r.overall_assessment || r.error || '';
+  } else {
+    gptBox.classList.add('hidden');
+  }
+
+  // Lista finestre
+  renderWindowList(document.getElementById('window-list'), r.windows || []);
+
+  // JSON
+  document.getElementById('json-pre').textContent = JSON.stringify(r, null, 2);
+
+  document.getElementById('results-section').classList.remove('hidden');
+  document.getElementById('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  toast('Analisi completata!', 'success');
+}
+
+function renderWindowList(container, windows) {
+  container.innerHTML = '';
+  if (!windows.length) {
+    container.innerHTML = '<div style="color:var(--muted);font-size:.84rem;padding:.5rem 0">Nessuna finestra rilevata</div>';
+    return;
+  }
+  windows.forEach(w => {
+    const el = document.createElement('div');
+    el.className = 'window-item';
+    const desc = w.description ? `<span class="window-desc" title="${w.description}">${w.description}</span>` : '';
+    el.innerHTML = `
+      <div class="window-dot ${w.label}"></div>
+      <span class="window-label ${w.label}">${w.label.toUpperCase()}</span>
+      <span class="window-conf">${(w.conf * 100).toFixed(1)}%</span>
+      <span class="window-id">finestra #${w.window_id}</span>
+      ${desc}
+    `;
+    container.appendChild(el);
+  });
+}
+
+// ── DOWNLOAD ──────────────────────────────────────────────────────────────────
+document.getElementById('dl-image-btn').addEventListener('click', () => {
+  if (currentRunId) window.location.href = `/result/${currentRunId}/download/image`;
+});
+document.getElementById('dl-json-btn').addEventListener('click', () => {
+  if (currentRunId) window.location.href = `/result/${currentRunId}/download/json`;
+});
+document.getElementById('json-toggle-btn').addEventListener('click', () => {
+  const wrap = document.getElementById('json-viewer-wrap');
+  wrap.classList.toggle('hidden');
+  const btn = document.getElementById('json-toggle-btn');
+  btn.innerHTML = wrap.classList.contains('hidden')
+    ? '<i class="fa-solid fa-code"></i> Visualizza JSON'
+    : '<i class="fa-solid fa-code"></i> Nascondi JSON';
+});
+
+// ── HISTORY ───────────────────────────────────────────────────────────────────
+document.getElementById('refresh-btn').addEventListener('click', loadHistory);
+
+document.getElementById('delete-all-btn').addEventListener('click', async () => {
+  if (!confirm('Eliminare tutto lo storico? L\'operazione è irreversibile.')) return;
+  await fetch('/history', { method: 'DELETE' });
+  toast('Storico eliminato', 'success');
+  loadHistory();
+});
+
+document.getElementById('modal-delete-btn').addEventListener('click', async () => {
+  const id = document.getElementById('modal-dl-img').href.split('/result/')[1]?.split('/')[0];
+  if (!id || !confirm('Eliminare questa analisi?')) return;
+  await fetch(`/result/${id}`, { method: 'DELETE' });
+  closeModal();
+  toast('Analisi eliminata', 'success');
+  loadHistory();
+});
+
+async function loadHistory() {
+  const grid = document.getElementById('history-grid');
+  grid.innerHTML = '<div style="color:var(--muted);padding:1rem;font-size:.85rem">Caricamento…</div>';
+  try {
+    const resp  = await fetch('/history');
+    const items = await resp.json();
+    renderHistory(items);
+  } catch { toast('Errore caricamento storico', 'error'); }
+}
+
+function renderHistory(items) {
+  const grid = document.getElementById('history-grid');
+  grid.innerHTML = '';
+  if (!items.length) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><i class="fa-solid fa-clock-rotate-left"></i><p>Nessuna analisi precedente</p></div>`;
+    return;
+  }
+  items.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'history-card';
+    const src = item.source === 'azure_gpt4o' ? '<span class="pill gpt">GPT-4o</span>' : '<span class="pill local">Local</span>';
+    card.innerHTML = `
+      <div class="history-thumb">
+        <img src="/result/${item.id}/image" loading="lazy" alt="" onerror="this.parentElement.innerHTML='<i class=\\'fa-solid fa-image\\'></i>'">
+      </div>
+      <div class="history-meta">
+        <div class="fname">${item.filename}</div>
+        <div class="ts">${formatTs(item.timestamp)}</div>
+        <div class="pills">
+          <span class="pill clean">${item.clean} ✓</span>
+          <span class="pill dirty">${item.dirty} ✗</span>
+          ${src}
+        </div>
+      </div>`;
+    card.addEventListener('click', () => openModal(item));
+    grid.appendChild(card);
+  });
+}
+
+// ── MODAL ─────────────────────────────────────────────────────────────────────
+async function openModal(item) {
+  document.getElementById('modal-filename').textContent = item.filename;
+  document.getElementById('modal-ts').textContent = formatTs(item.timestamp);
+  document.getElementById('modal-image').src = `/result/${item.id}/image`;
+  document.getElementById('modal-dl-img').href  = `/result/${item.id}/download/image`;
+  document.getElementById('modal-dl-json').href = `/result/${item.id}/download/json`;
+
+  document.getElementById('modal-stats').innerHTML = `
+    <div class="stat-chip"><i class="fa-solid fa-border-all"></i> ${item.total} finestre</div>
+    <div class="stat-chip clean"><i class="fa-solid fa-circle-check"></i> ${item.clean} pulite</div>
+    <div class="stat-chip dirty"><i class="fa-solid fa-circle-xmark"></i> ${item.dirty} sporche</div>`;
+
+  const wList  = document.getElementById('modal-window-list');
+  const gptBox = document.getElementById('modal-gpt-box');
+  wList.innerHTML = '<div style="color:var(--muted);font-size:.82rem">Caricamento…</div>';
+  gptBox.classList.add('hidden');
+
+  try {
+    const resp   = await fetch(`/result/${item.id}/report`);
+    const report = await resp.json();
+    renderWindowList(wList, report.windows || []);
+    if (report.overall_assessment) {
+      gptBox.classList.remove('hidden');
+      document.getElementById('modal-gpt-text').textContent = report.overall_assessment;
+    }
+  } catch { wList.innerHTML = ''; }
+
+  document.getElementById('modal').classList.remove('hidden');
+}
+
+document.getElementById('modal-close').addEventListener('click',   closeModal);
+document.getElementById('modal-backdrop').addEventListener('click', closeModal);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+</script>
+</body>
+</html>
